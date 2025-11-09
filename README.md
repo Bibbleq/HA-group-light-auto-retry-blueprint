@@ -1,10 +1,10 @@
 # HA Group Light Auto Retry Blueprint
 
-This Home Assistant blueprint monitors service calls to `light.all_*` groups and automatically retries any lights that fail to respond correctly during bulk on/off events. It's particularly useful for Z-Wave networks where multiple simultaneous commands can overwhelm the mesh, leaving some lights out of sync.
+This Home Assistant blueprint monitors service calls to light groups and automatically retries any lights that fail to respond correctly during bulk on/off events. It's particularly useful for Z-Wave networks where multiple simultaneous commands can overwhelm the mesh, leaving some lights out of sync.
 
 ## Features
 
-- **Smart pattern matching**: Only triggers on `light.all_*` groups (configurable pattern)
+- **Smart pattern matching**: Configurable regex pattern to match any light group (automatically prefixed with `^light\.`)
 - **Intelligent state detection**: Checks both state AND brightness to catch stuck lights
 - **Configurable retry passes**: Choose 1-5 retry attempts (default: 2)
 - **Detailed logging**: Logs what was caught, retried, and fixed on each pass
@@ -16,7 +16,7 @@ This Home Assistant blueprint monitors service calls to `light.all_*` groups and
 ## How It Works
 
 1. **Trigger**: Detects any `light.turn_on` or `light.turn_off` service call
-2. **Filter**: Only proceeds if a `light.all_*` group is in the targets
+2. **Filter**: Only proceeds if a matching light group is in the targets
 3. **Wait**: Delays (default 4s) for initial command to propagate
 4. **Retry Loop**: For each pass (up to configured max):
    - Check which lights are out of sync (checks brightness for OFF commands)
@@ -42,16 +42,24 @@ This Home Assistant blueprint monitors service calls to `light.all_*` groups and
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| **Group Pattern** | Regex pattern for matching group names | `^light\.all_` |
+| **Group Pattern** | Regex pattern for matching group names (automatically prefixed with `^light\.`) | `""` (matches all light groups) |
 | **Max Retry Passes** | Maximum number of retry attempts (1-5) | 2 |
 | **Initial Delay** | Seconds to wait before first check | 4 |
 | **Retry Delay** | Seconds to wait between retry passes | 3 |
 | **Log Level** | System log level (info/warning/error) | warning |
 
+### Group Pattern Examples
+
+The pattern is automatically prefixed with `^light\.`, so you only need to specify the part after that:
+- `""` - Matches all light groups (e.g., `light.living_room`, `light.all_lights`, etc.)
+- `all_` - Matches only groups starting with `all_` (e.g., `light.all_living_room`, `light.all_bedroom`)
+- `bedroom_` - Matches groups starting with `bedroom_` (e.g., `light.bedroom_main`, `light.bedroom_closet`)
+- `.*_group$` - Matches groups ending with `_group` (e.g., `light.living_room_group`, `light.kitchen_group`)
+
 ## Example Scenario
 
 ```
-1. You call light.turn_off on light.all_living_room
+1. You call light.turn_off on light.living_room_group
 2. Blueprint waits 4 seconds
 3. Pass 1: Finds light.living_room_lamp_3 is still on with brightness 128
 4. Retries turn_off, logs: "[CATCHER PASS 1] Retried..."
@@ -63,14 +71,14 @@ This Home Assistant blueprint monitors service calls to `light.all_*` groups and
 
 Check Home Assistant logs for entries like:
 ```
-[CATCHER START] service=turn_off group_eid=light.all_living_room ...
-[CATCHER PASS 1] Retried off for ['light.living_room_lamp_3'] (from light.all_living_room)
+[CATCHER START] service=turn_off group_eid=light.living_room_group ...
+[CATCHER PASS 1] Retried off for ['light.living_room_lamp_3'] (from light.living_room_group)
 [CATCHER COMPLETE] All lights synced after 1 pass
 ```
 
 ## Original Automation
 
-This blueprint is based on the "Catch all_* light group calls" automation, converted to a reusable blueprint.
+This blueprint is based on the "Catch light group calls" automation, converted to a reusable blueprint.
 
 ## License
 
