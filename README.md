@@ -11,6 +11,7 @@ This Home Assistant blueprint monitors service calls to `light.all_*` groups and
 - **Parallel execution**: Can handle multiple group commands simultaneously
 - **Handles edge cases**: Treats `unknown`/`unavailable` lights as out-of-sync
 - **Smart early exit**: Stops retrying once all lights are synced
+- **Resilient error handling**: Uses `continue_on_error` to ensure all lights are attempted even if some fail due to network congestion
 
 ## How It Works
 
