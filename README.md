@@ -1,0 +1,1 @@
+# HA-group-light-auto-retry-blueprint
