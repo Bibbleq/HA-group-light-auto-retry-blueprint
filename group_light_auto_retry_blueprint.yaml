@@ -1,0 +1,168 @@
+blueprint:
+  name: Group Light Auto Retry (all_* pattern, multi-pass)
+  description: >
+    Monitors light.all_* group service calls and automatically retries lights
+    that fail to sync. Uses intelligent state+brightness checking with configurable
+    retry passes (1-5) and detailed logging. Perfect for Z-Wave or other networks
+    prone to missed commands during bulk operations.
+  domain: automation
+  input:
+    group_pattern:
+      name: Group Name Pattern
+      description: Regex pattern to match group entity IDs (e.g., ^light\.all_)
+      default: "^light\\.all_"
+      selector:
+        text:
+    max_retry_passes:
+      name: Maximum Retry Passes
+      description: How many retry attempts to make (stops early if all synced)
+      default: 2
+      selector:
+        number:
+          min: 1
+          max: 5
+          mode: box
+    initial_delay:
+      name: Initial Delay (seconds)
+      description: Wait time after initial service call before first check
+      default: 4
+      selector:
+        number:
+          min: 1
+          max: 10
+          unit_of_measurement: seconds
+    retry_delay:
+      name: Retry Delay (seconds)
+      description: Wait time between retry passes
+      default: 3
+      selector:
+        number:
+          min: 1
+          max: 10
+          unit_of_measurement: seconds
+    log_level:
+      name: Log Level
+      description: System log level for retry messages
+      default: warning
+      selector:
+        select:
+          options:
+            - info
+            - warning
+            - error
+
+trigger:
+  - platform: event
+    event_type: call_service
+    event_data:
+      domain: light
+      service: turn_on
+  - platform: event
+    event_type: call_service
+    event_data:
+      domain: light
+      service: turn_off
+
+variables:
+  pattern: !input group_pattern
+  max_passes: !input max_retry_passes
+  all_targets: >-
+    {% set sd = trigger.event.data.service_data | default({}, true) %}
+    {% set tg = trigger.event.data.target | default({}, true) %}
+    {% set e = sd.get('entity_id', tg.get('entity_id', [])) %}
+    {% set ids = e if e is iterable and e is not string else [e] %}
+    {{ ids }}
+  group_eid: |-
+    {% for id in all_targets %}
+      {% if id is string and id is match(pattern) %}
+        {{ id }}
+        {% break %}
+      {% endif %}
+    {% endfor %}
+  desired_state: "{{ 'on' if trigger.event.data.service == 'turn_on' else 'off' }}"
+  desired_service: "{{ 'light.turn_on' if desired_state == 'on' else 'light.turn_off' }}"
+
+condition:
+  - condition: template
+    value_template: |
+      {{ all_targets
+         | select('string')
+         | select('match', pattern)
+         | list
+         | length > 0 }}
+
+action:
+  - action: system_log.write
+    data:
+      level: !input log_level
+      message: >
+        [CATCHER START] service={{ trigger.event.data.service }}
+        domain={{ trigger.event.data.domain }}
+        service_data_eid={{ trigger.event.data.service_data.entity_id }}
+        target_eid={{ trigger.event.data.target.entity_id if trigger.event.data.target is defined else 'None' }}
+        desired_state={{ desired_state }}
+        group_eid={{ group_eid }}
+        all_targets={{ all_targets }}
+
+  - delay:
+      seconds: !input initial_delay
+
+  - repeat:
+      count: "{{ max_passes }}"
+      sequence:
+        - variables:
+            out_of_sync: >-
+              {% set members = expand(group_eid) | map(attribute='entity_id') | list %}
+              {% set ns = namespace(out=[]) %}
+              {% for e in members %}
+                {% set st = states(e) %}
+                {% set br = state_attr(e, 'brightness') | int(0) %}
+                {# Treat unknown/unavailable/None as out of sync #}
+                {% if st in ['unknown', 'unavailable', None] %}
+                  {% set ns.out = ns.out + [e] %}
+                {% elif desired_state == 'off' %}
+                  {# OFF: still on or reporting brightness > 0 after the settle delay #}
+                  {% if st != 'off' or br > 0 %}
+                    {% set ns.out = ns.out + [e] %}
+                  {% endif %}
+                {% else %}
+                  {# ON: still off #}
+                  {% if st != 'on' %}
+                    {% set ns.out = ns.out + [e] %}
+                  {% endif %}
+                {% endif %}
+              {% endfor %}
+              {{ ns.out }}
+
+        - if:
+            - condition: template
+              value_template: "{{ out_of_sync | length == 0 }}"
+          then:
+            - action: system_log.write
+              data:
+                level: !input log_level
+                message: >
+                  [CATCHER COMPLETE] All lights synced after {{ repeat.index - 1 }} pass(es) (group: {{ group_eid }})
+            - stop: "All lights are synced"
+
+        - action: "{{ desired_service }}"
+          target:
+            entity_id: "{{ out_of_sync }}"
+
+        - action: system_log.write
+          data:
+            level: !input log_level
+            message: >
+              [CATCHER PASS {{ repeat.index }}] Retried {{ desired_state }} for {{ out_of_sync }}
+              (from {{ group_eid }})
+
+        - if:
+            - condition: template
+              value_template: "{{ repeat.index < max_passes }}"
+          then:
+            - delay:
+                seconds: !input retry_delay
+
+mode: parallel
+trace:
+  stored_traces: 20
