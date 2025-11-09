@@ -7,7 +7,6 @@ blueprint:
     prone to missed commands during bulk operations.
   domain: automation
   source_url: https://github.com/Bibbleq/HA-group-light-auto-retry-blueprint/blob/main/group_light_auto_retry_blueprint.yaml
-  version: "1.0.0"
   input:
     group_pattern:
       name: Group Name Pattern
