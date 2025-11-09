@@ -5,7 +5,9 @@ blueprint:
     that fail to sync. Uses intelligent state+brightness checking with configurable
     retry passes (1-5) and detailed logging. Perfect for Z-Wave or other networks
     prone to missed commands during bulk operations.
-    Version: 1.1
+
+    
+     **Version**: 1.1
   domain: automation
   source_url: https://github.com/Bibbleq/HA-group-light-auto-retry-blueprint/blob/main/group_light_auto_retry_blueprint.yaml
   input:
