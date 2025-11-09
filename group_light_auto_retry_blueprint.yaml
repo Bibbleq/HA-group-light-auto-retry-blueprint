@@ -146,6 +146,7 @@ action:
             - stop: "All lights are synced"
 
         - action: "{{ desired_service }}"
+          continue_on_error: true
           target:
             entity_id: "{{ out_of_sync }}"
 
